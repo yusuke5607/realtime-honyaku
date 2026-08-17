@@ -1,11 +1,14 @@
-import "dotenv/config";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import { config } from "dotenv";
 import Fastify from "fastify";
 import OpenAI from "openai";
+import { resolve } from "node:path";
 import type { ClientMessage, ServerMessage, SessionOptions } from "../shared/protocol.js";
 import { calculateMetrics } from "./metrics.js";
 import { OpenAIRealtimeSession } from "./openai-realtime.js";
+
+config({ path: resolve(process.cwd(), "..", ".env"), override: false });
 
 const app = Fastify({ logger: true });
 await app.register(cors, { origin: true });

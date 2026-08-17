@@ -1,21 +1,12 @@
 import WebSocket from "ws";
-import type { LanguageCode, ServerMessage, SessionOptions } from "../shared/protocol.js";
+import type { ServerMessage, SessionOptions } from "../shared/protocol.js";
 
 type Emit = (message: ServerMessage) => void;
 type FinalTranscript = (text: string) => Promise<void>;
 
-const languageLabels: Record<LanguageCode, string> = {
-  ja: "Japanese",
-  en: "English",
-  ko: "Korean",
-  zh: "Chinese",
-  es: "Spanish",
-  fr: "French",
-  de: "German",
-};
-
 export class OpenAIRealtimeSession {
   private socket: WebSocket | null = null;
+  private pendingAudioBytes = 0;
 
   constructor(
     private readonly apiKey: string,
@@ -25,37 +16,50 @@ export class OpenAIRealtimeSession {
   ) {}
 
   async connect(): Promise<void> {
-    const model =
-      this.options.mode === "pipeline"
-        ? process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-realtime-whisper"
-        : process.env.OPENAI_DIRECT_MODEL ?? "gpt-realtime-translate";
-    const url = `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(model)}`;
+    const model = this.options.mode === "pipeline"
+      ? process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-live-transcribe"
+      : process.env.OPENAI_DIRECT_MODEL ?? "gpt-realtime-translate";
+    const url = this.options.mode === "direct"
+      ? `wss://api.openai.com/v1/realtime/translations?model=${encodeURIComponent(model)}`
+      : "wss://api.openai.com/v1/realtime?intent=transcription";
 
     await new Promise<void>((resolve, reject) => {
       const socket = new WebSocket(url, {
         headers: {
           Authorization: `Bearer ${this.apiKey}`,
-          "OpenAI-Beta": "realtime=v1",
         },
       });
       this.socket = socket;
       const timeout = setTimeout(() => reject(new Error("OpenAIへの接続がタイムアウトしました。")), 15_000);
 
       socket.once("open", () => {
-        clearTimeout(timeout);
         this.configure();
-        resolve();
       });
       socket.once("error", (error) => {
         clearTimeout(timeout);
         reject(error);
       });
-      socket.on("message", (data) => this.handleEvent(data.toString()));
+      socket.on("message", (data) => {
+        const raw = data.toString();
+        this.handleEvent(raw);
+        try {
+          const event = JSON.parse(raw) as { type?: string; error?: { message?: string } };
+          if (event.type === "session.updated" || event.type === "transcription_session.updated") {
+            clearTimeout(timeout);
+            resolve();
+          } else if (event.type === "error") {
+            clearTimeout(timeout);
+            reject(new Error(event.error?.message ?? "OpenAI session configuration failed"));
+          }
+        } catch {
+          // The normal event handler ignores malformed provider events.
+        }
+      });
       socket.on("close", (code, reason) => {
         if (code !== 1000) {
           this.emit({
             type: "session.error",
-            message: `OpenAI接続が終了しました (${code}): ${reason.toString() || "理由不明"}`,
+            message: `OpenAI接続が終了しました [${this.options.mode}/${model}] (${code}): ${reason.toString() || "理由不明"}`,
             recoverable: false,
           });
         }
@@ -64,20 +68,37 @@ export class OpenAIRealtimeSession {
   }
 
   appendAudio(audio: string): void {
-    this.send({ type: "input_audio_buffer.append", audio });
+    const type = this.options.mode === "direct"
+      ? "session.input_audio_buffer.append"
+      : "input_audio_buffer.append";
+    this.send({ type, audio });
+
+    if (this.options.mode === "pipeline") {
+      this.pendingAudioBytes += Math.floor((audio.length * 3) / 4);
+      // gpt-live-transcribe does not support server VAD, so create short turns locally.
+      if (this.pendingAudioBytes >= 24_000 * 2) {
+        this.send({ type: "input_audio_buffer.commit" });
+        this.pendingAudioBytes = 0;
+      }
+    }
   }
 
   stop(): void {
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.send({ type: "input_audio_buffer.commit" });
-      setTimeout(() => this.socket?.close(1000), 800);
+      if (this.options.mode === "direct") {
+        this.send({ type: "session.close" });
+        setTimeout(() => this.socket?.close(1000), 5_000);
+      } else {
+        if (this.pendingAudioBytes >= 24_000 * 2 * 0.1) {
+          this.send({ type: "input_audio_buffer.commit" });
+          this.pendingAudioBytes = 0;
+        }
+        setTimeout(() => this.socket?.close(1000), 800);
+      }
     }
   }
 
   private configure(): void {
-    const input = languageLabels[this.options.sourceLanguage];
-    const output = languageLabels[this.options.targetLanguage];
-
     if (this.options.mode === "pipeline") {
       this.send({
         type: "session.update",
@@ -87,15 +108,11 @@ export class OpenAIRealtimeSession {
             input: {
               format: { type: "audio/pcm", rate: 24_000 },
               transcription: {
-                model: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-realtime-whisper",
-                language: this.options.sourceLanguage,
+                model: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-live-transcribe",
+                languages: [this.options.sourceLanguage],
+                delay: "low",
               },
-              turn_detection: {
-                type: "server_vad",
-                threshold: 0.5,
-                prefix_padding_ms: 300,
-                silence_duration_ms: 650,
-              },
+              turn_detection: null,
             },
           },
         },
@@ -106,16 +123,8 @@ export class OpenAIRealtimeSession {
     this.send({
       type: "session.update",
       session: {
-        type: "translation",
-        source_language: this.options.sourceLanguage,
-        target_language: this.options.targetLanguage,
-        instructions: `Translate spoken ${input} into natural ${output}. Preserve meaning, names, numbers, and tone.`,
         audio: {
-          input: {
-            format: { type: "audio/pcm", rate: 24_000 },
-            turn_detection: { type: "server_vad", silence_duration_ms: 650 },
-          },
-          output: { format: { type: "audio/pcm", rate: 24_000 }, voice: "marin" },
+          output: { language: this.options.targetLanguage },
         },
       },
     });
@@ -131,6 +140,31 @@ export class OpenAIRealtimeSession {
     const type = String(event.type ?? "");
     const text = String(event.delta ?? event.transcript ?? "");
 
+    if (type === "session.closed") {
+      this.socket?.close(1000);
+      return;
+    }
+    if (type === "session.input_transcript.delta" && text) {
+      this.emit({ type: "transcript.partial", text });
+      return;
+    }
+    if ((type === "session.input_transcript.done" || type === "session.input_transcript.completed") && text) {
+      this.emit({ type: "transcript.final", text });
+      return;
+    }
+    if (type === "session.output_transcript.delta" && text) {
+      this.emit({ type: "translation.partial", text });
+      return;
+    }
+    if ((type === "session.output_transcript.done" || type === "session.output_transcript.completed") && text) {
+      this.emit({ type: "translation.final", text });
+      return;
+    }
+    if (type === "session.output_audio.delta" && typeof event.delta === "string") {
+      this.emit({ type: "audio.delta", audio: event.delta });
+      return;
+    }
+
     if (type.includes("transcription") && type.endsWith("delta") && text) {
       this.emit({ type: "transcript.partial", text });
     } else if (type.includes("transcription") && type.endsWith("completed") && text) {
@@ -140,7 +174,7 @@ export class OpenAIRealtimeSession {
       this.emit({ type: "translation.partial", text });
     } else if ((type.includes("translation") || type.includes("audio_transcript")) && type.endsWith("done") && text) {
       this.emit({ type: "translation.final", text });
-    } else if (type.includes("audio") && type.endsWith("delta") && typeof event.delta === "string") {
+    } else if (this.options.mode === "direct" && type.includes("audio") && type.endsWith("delta") && typeof event.delta === "string") {
       this.emit({ type: "audio.delta", audio: event.delta });
     } else if (type === "error") {
       const error = event.error as { message?: string } | undefined;

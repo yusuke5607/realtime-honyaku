@@ -4,7 +4,7 @@ export class PcmRecorder {
   private source: MediaStreamAudioSourceNode | null = null;
   private processor: ScriptProcessorNode | null = null;
 
-  async start(onChunk: (base64: string) => void): Promise<void> {
+  async start(onChunk: (base64: string) => void, onLevel?: (level: number) => void): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
@@ -15,10 +15,13 @@ export class PcmRecorder {
     this.processor.onaudioprocess = (event) => {
       const samples = event.inputBuffer.getChannelData(0);
       const pcm = new Int16Array(samples.length);
+      let sumSquares = 0;
       for (let i = 0; i < samples.length; i += 1) {
         const sample = Math.max(-1, Math.min(1, samples[i]));
+        sumSquares += sample * sample;
         pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
       }
+      onLevel?.(Math.min(1, Math.sqrt(sumSquares / samples.length) * 8));
       const bytes = new Uint8Array(pcm.buffer);
       let binary = "";
       for (let i = 0; i < bytes.length; i += 0x8000) {

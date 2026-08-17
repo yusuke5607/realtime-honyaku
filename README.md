@@ -2,7 +2,7 @@
 
 マイク音声をリアルタイムで翻訳するWebアプリです。次の2方式を画面から切り替えて比較できます。
 
-- **分離型**: `gpt-realtime-whisper`で文字起こしし、`gpt-5-mini`で翻訳
+- **分離型**: `gpt-live-transcribe`で文字起こしし、`gpt-5-mini`で翻訳
 - **一括型**: `gpt-realtime-translate`で音声を直接翻訳
 
 画面には原文、翻訳文、音声時間、初回結果までの時間、API使用量に基づく推定料金を表示します。一括型では翻訳音声も再生します。
@@ -17,7 +17,6 @@
 
 ```powershell
 npm.cmd install
-Copy-Item .env.example .env
 npm.cmd run dev
 ```
 
@@ -25,14 +24,20 @@ npm.cmd run dev
 
 ## OpenAI APIを使う
 
-`.env`を次のように変更します。
+APIキーをプロジェクト内へ置かないよう、プロジェクトの1階層上に`.env`を作成します。
+
+```text
+C:\Users\81902\Desktop\.env
+```
+
+内容は次のようにします。
 
 ```dotenv
 OPENAI_API_KEY=sk-...
 TRANSLATION_PROVIDER=openai
 ```
 
-変更後、開発サーバーを再起動してください。APIキーはサーバーだけが読み取り、ブラウザへは送信しません。`.env`はGit管理対象外です。
+変更後、開発サーバーを再起動してください。APIキーはサーバーだけが読み取り、ブラウザへは送信しません。`.env`はプロジェクトの外にあるため、このリポジトリのGit管理対象にはなりません。既にプロセス環境変数が設定されている場合は、そちらが優先されます。
 
 OpenAI APIの利用料金はChatGPTの契約とは別です。OpenAI Platform側で月額上限とアラートを設定してください。
 

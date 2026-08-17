@@ -36,6 +36,10 @@ select:focus { border-color: #5ed9b0; }
 .record.recording { color: #ffe9e6; background: #9f443d; }
 .record-icon { width: 11px; height: 11px; border: 2px solid currentColor; border-radius: 50%; }
 .recording .record-icon { border-radius: 2px; background: currentColor; }
+.input-meter { display: grid; grid-template-columns: auto 1fr 3rem; align-items: center; gap: 10px; margin-top: 12px; color: #829791; font-size: 12px; }
+.input-meter > div { height: 7px; overflow: hidden; border-radius: 999px; background: #20332f; }
+.input-meter i { display: block; height: 100%; border-radius: inherit; background: #65e6ba; transition: width 80ms linear; }
+.input-meter strong { color: #eaf4f1; text-align: right; }
 .mock-note { margin: 13px 0 0; color: #829791; font-size: 12px; text-align: center; }
 .error { margin: 14px 0 0; padding: 11px 13px; color: #ffaaa2; border: 1px solid #803d38; border-radius: 10px; background: #321917; font-size: 13px; }
 .workspace { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 18px; margin-top: 18px; }
