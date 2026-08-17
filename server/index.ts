@@ -61,7 +61,7 @@ app.get("/ws", { websocket: true }, (socket) => {
     });
     inputTokens += response.usage?.input_tokens ?? 0;
     outputTokens += response.usage?.output_tokens ?? 0;
-    emit({ type: "translation.final", text: response.output_text.trim() });
+    emit({ type: "turn.final", original: text, translation: response.output_text.trim() });
     emitMetrics();
   };
 
@@ -106,11 +106,19 @@ app.get("/ws", { websocket: true }, (socket) => {
         mockChunks += 1;
         if (mockChunks === 8) emit({ type: "transcript.partial", text: "今日はリアルタイム翻訳の" });
         if (mockChunks === 16) {
-          emit({ type: "transcript.final", text: "今日はリアルタイム翻訳のテストをしています。" });
-          emit({ type: "translation.final", text: "We are testing real-time translation today." });
+          emit({
+            type: "turn.final",
+            original: "今日はリアルタイム翻訳のテストをしています。",
+            translation: "We are testing real-time translation today.",
+          });
         }
       }
       if (mockChunks % 10 === 0) emitMetrics();
+      return;
+    }
+
+    if (message.type === "audio.commit") {
+      realtime?.commitAudio();
       return;
     }
 

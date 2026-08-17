@@ -75,11 +75,13 @@ export class OpenAIRealtimeSession {
 
     if (this.options.mode === "pipeline") {
       this.pendingAudioBytes += Math.floor((audio.length * 3) / 4);
-      // gpt-live-transcribe does not support server VAD, so create short turns locally.
-      if (this.pendingAudioBytes >= 24_000 * 2) {
-        this.send({ type: "input_audio_buffer.commit" });
-        this.pendingAudioBytes = 0;
-      }
+    }
+  }
+
+  commitAudio(): void {
+    if (this.options.mode === "pipeline" && this.pendingAudioBytes >= 24_000 * 2 * 0.1) {
+      this.send({ type: "input_audio_buffer.commit" });
+      this.pendingAudioBytes = 0;
     }
   }
 
@@ -89,10 +91,7 @@ export class OpenAIRealtimeSession {
         this.send({ type: "session.close" });
         setTimeout(() => this.socket?.close(1000), 5_000);
       } else {
-        if (this.pendingAudioBytes >= 24_000 * 2 * 0.1) {
-          this.send({ type: "input_audio_buffer.commit" });
-          this.pendingAudioBytes = 0;
-        }
+        this.commitAudio();
         setTimeout(() => this.socket?.close(1000), 800);
       }
     }

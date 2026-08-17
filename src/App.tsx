@@ -83,12 +83,23 @@ export default function App() {
         break;
       case "translation.final":
         setResults((current) => [
-          ...current,
           { id: nextId.current++, original: pendingOriginalRef.current || partialOriginalRef.current || "（直接音声翻訳）", translation: message.text },
+          ...current,
         ]);
         pendingOriginalRef.current = "";
         partialOriginalRef.current = "";
         setPendingOriginal("");
+        setPartialTranslation("");
+        break;
+      case "turn.final":
+        setResults((current) => [
+          { id: nextId.current++, original: message.original, translation: message.translation },
+          ...current,
+        ]);
+        if (pendingOriginalRef.current === message.original) {
+          pendingOriginalRef.current = "";
+          setPendingOriginal("");
+        }
         setPartialTranslation("");
         break;
       case "audio.delta":
@@ -125,14 +136,23 @@ export default function App() {
     setStatus("connecting");
 
     try {
-      await recorderRef.current.start((audio) => {
+      await recorderRef.current.start((audio, speechActive) => {
+        if (activeModeRef.current === "pipeline" && !speechActive) return;
         if (providerReadyRef.current && socketRef.current?.readyState === WebSocket.OPEN) {
           socketRef.current.send(JSON.stringify({ type: "audio.chunk", audio }));
         } else {
           audioQueueRef.current.push(audio);
           if (audioQueueRef.current.length > 30) audioQueueRef.current.shift();
         }
-      }, setInputLevel);
+      }, setInputLevel, () => {
+        if (
+          activeModeRef.current === "pipeline" &&
+          providerReadyRef.current &&
+          socketRef.current?.readyState === WebSocket.OPEN
+        ) {
+          socketRef.current.send(JSON.stringify({ type: "audio.commit" }));
+        }
+      });
     } catch {
       setError("マイクを開始できません。ブラウザとWindowsのマイク権限を確認してください。");
       setStatus("error");
@@ -218,14 +238,33 @@ export default function App() {
 
       <section className="workspace">
         <div className="transcript-card">
-          <div className="section-heading"><h2>会話</h2><button onClick={() => setResults([])} disabled={!results.length}>クリア</button></div>
-          {!results.length && !partialOriginal && !partialTranslation ? (
+          <div className="section-heading">
+            <div><h2>会話</h2><p>最新の発話を上に表示</p></div>
+            <button onClick={() => setResults([])} disabled={!results.length}>クリア</button>
+          </div>
+          {!results.length && !partialOriginal && !pendingOriginal && !partialTranslation ? (
             <div className="empty"><div className="wave"><i/><i/><i/><i/><i/></div><p>翻訳を開始して話しかけてください</p></div>
           ) : (
-            <div className="results">
-              {results.map((result) => <article key={result.id}><p className="original">{result.original}</p><p className="translation">{result.translation}</p></article>)}
-              {(partialOriginal || partialTranslation) && <article className="partial"><p>{partialOriginal}</p><p>{partialTranslation}</p><span>認識中…</span></article>}
-            </div>
+            <>
+              {(partialOriginal || pendingOriginal || partialTranslation) && (
+                <article className="live-turn">
+                  <div className="turn-heading"><strong>いまの発話</strong><span>{partialTranslation ? "翻訳中…" : "認識中…"}</span></div>
+                  <div className="utterance original"><small>原文 · {languageNames[sourceLanguage]}</small><p>{partialOriginal || pendingOriginal || "音声を認識しています…"}</p></div>
+                  <div className="utterance translation"><small>翻訳 · {languageNames[targetLanguage]}</small><p>{partialTranslation || "翻訳を待っています…"}</p></div>
+                </article>
+              )}
+              {!!results.length && (
+                <div className="results">
+                  <p className="history-label">確定履歴 · 新しい順</p>
+                  {results.map((result) => (
+                    <article key={result.id}>
+                      <div className="utterance original"><small>原文 · {languageNames[sourceLanguage]}</small><p>{result.original}</p></div>
+                      <div className="utterance translation"><small>翻訳 · {languageNames[targetLanguage]}</small><p>{result.translation}</p></div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 

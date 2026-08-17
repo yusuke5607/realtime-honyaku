@@ -11,6 +11,7 @@ export interface SessionOptions {
 export type ClientMessage =
   | { type: "session.start"; options: SessionOptions }
   | { type: "audio.chunk"; audio: string }
+  | { type: "audio.commit" }
   | { type: "session.stop" };
 
 export interface UsageMetrics {
@@ -27,6 +28,7 @@ export type ServerMessage =
   | { type: "transcript.final"; text: string }
   | { type: "translation.partial"; text: string }
   | { type: "translation.final"; text: string }
+  | { type: "turn.final"; original: string; translation: string }
   | { type: "audio.delta"; audio: string }
   | { type: "metrics"; metrics: UsageMetrics }
   | { type: "session.stopped" }
