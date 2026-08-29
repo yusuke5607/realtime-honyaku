@@ -1,17 +1,16 @@
+export type AudioChannel = "remote" | "local";
 export type TranslationMode = "pipeline" | "direct";
-
 export type LanguageCode = "ja" | "en" | "ko" | "zh" | "es" | "fr" | "de";
 
 export interface SessionOptions {
-  mode: TranslationMode;
-  sourceLanguage: LanguageCode;
-  targetLanguage: LanguageCode;
+  localLanguage: LanguageCode;
+  remoteLanguage: LanguageCode;
 }
 
 export type ClientMessage =
   | { type: "session.start"; options: SessionOptions }
-  | { type: "audio.chunk"; audio: string }
-  | { type: "audio.commit" }
+  | { type: "audio.chunk"; channel: AudioChannel; audio: string }
+  | { type: "audio.commit"; channel: AudioChannel }
   | { type: "session.stop" };
 
 export interface UsageMetrics {
@@ -23,23 +22,16 @@ export interface UsageMetrics {
 }
 
 export type ServerMessage =
-  | { type: "session.ready"; mode: TranslationMode; provider: "mock" | "openai" }
-  | { type: "transcript.partial"; text: string }
-  | { type: "transcript.final"; text: string }
-  | { type: "translation.partial"; text: string }
-  | { type: "translation.final"; text: string }
-  | { type: "turn.final"; original: string; translation: string }
-  | { type: "audio.delta"; audio: string }
+  | { type: "session.ready"; provider: "mock" | "openai" }
+  | { type: "transcript.partial"; channel: AudioChannel; text: string }
+  | { type: "transcript.final"; channel: AudioChannel; text: string }
+  | { type: "turn.final"; channel: AudioChannel; original: string; translation: string }
+  | { type: "audio.file"; channel: AudioChannel; audio: string; mimeType: "audio/mpeg" }
   | { type: "metrics"; metrics: UsageMetrics }
   | { type: "session.stopped" }
-  | { type: "session.error"; message: string; recoverable: boolean };
+  | { type: "session.error"; channel?: AudioChannel; message: string; recoverable: boolean };
 
 export const languageNames: Record<LanguageCode, string> = {
-  ja: "日本語",
-  en: "英語",
-  ko: "韓国語",
-  zh: "中国語",
-  es: "スペイン語",
-  fr: "フランス語",
-  de: "ドイツ語",
+  ja: "日本語", en: "英語", ko: "韓国語", zh: "中国語",
+  es: "スペイン語", fr: "フランス語", de: "ドイツ語",
 };

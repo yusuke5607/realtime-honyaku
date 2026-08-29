@@ -1,6 +1,7 @@
 import type { TranslationMode, UsageMetrics } from "../shared/protocol.js";
 
-const PIPELINE_AUDIO_PER_MINUTE = 0.017;
+// Transcription plus synthesized output, rounded upward for a conservative UI estimate.
+const PIPELINE_AUDIO_PER_MINUTE = 0.02;
 const DIRECT_AUDIO_PER_MINUTE = 0.034;
 const TEXT_INPUT_PER_TOKEN = 0.25 / 1_000_000;
 const TEXT_OUTPUT_PER_TOKEN = 2 / 1_000_000;

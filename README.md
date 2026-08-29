@@ -1,17 +1,20 @@
 # 翻訳こんにゃく
 
-マイク音声をリアルタイムで翻訳するWebアプリです。次の2方式を画面から切り替えて比較できます。
+ブラウザ会議の相手の音声と、自分のマイク音声を双方向に翻訳するWebアプリです。原文・翻訳文を表示し、翻訳結果を音声でも再生します。
 
-- **分離型**: `gpt-live-transcribe`で文字起こしし、`gpt-5-mini`で翻訳
-- **一括型**: `gpt-realtime-translate`で音声を直接翻訳
+費用を抑えるため、発話区間だけを次の順で処理します。
 
-画面には原文、翻訳文、音声時間、初回結果までの時間、API使用量に基づく推定料金を表示します。一括型では翻訳音声も再生します。
+- `gpt-transcribe`: 文字起こし
+- `gpt-4o-mini`: テキスト翻訳
+- `gpt-4o-mini-tts`: 翻訳文の音声合成
 
 ## 必要なもの
 
 - Node.js 20以上
-- OpenAI APIキー（デモモードでは不要）
-- マイクを利用できるChrome、Edgeなどのブラウザ
+- OpenAI APIキー
+- ChromeまたはEdge
+- ヘッドホン（エコー防止のため推奨）
+- 自分の翻訳音声をZoom/Meetへ渡す場合は、VB-CABLEなどの仮想オーディオデバイス
 
 ## 起動
 
@@ -20,47 +23,39 @@ npm.cmd install
 npm.cmd run dev
 ```
 
-ブラウザで <http://localhost:5173> を開きます。初期状態はAPI課金が発生しないデモモードです。開始後しばらく話すと、固定のサンプル翻訳が表示されます。
+表示されたURL（通常は <http://localhost:5173>）を開きます。
 
-## OpenAI APIを使う
+1. 「会議タブを選んで開始」を押します。
+2. Zoom/Meetのタブを選び、「タブの音声を共有」をオンにします。
+3. マイク利用を許可します。
+4. 相手向け音声の出力先を選びます。
 
-APIキーをプロジェクト内へ置かないよう、プロジェクトの1階層上に`.env`を作成します。
+## OpenAI APIキー
 
-```text
-C:\Users\81902\Desktop\.env
-```
-
-内容は次のようにします。
+プロジェクトの1階層上に `.env` を置きます。APIキーはサーバーだけが読み、ブラウザには送りません。
 
 ```dotenv
 OPENAI_API_KEY=sk-...
 TRANSLATION_PROVIDER=openai
 ```
 
-変更後、開発サーバーを再起動してください。APIキーはサーバーだけが読み取り、ブラウザへは送信しません。`.env`はプロジェクトの外にあるため、このリポジトリのGit管理対象にはなりません。既にプロセス環境変数が設定されている場合は、そちらが優先されます。
+モデルを明示する場合は `.env.example` の項目も追加できます。OpenAI Platform側で月額上限とアラートを設定してください。
 
-OpenAI APIの利用料金はChatGPTの契約とは別です。OpenAI Platform側で月額上限とアラートを設定してください。
+## Zoom / Meetへ翻訳音声を渡す
+
+通常のWebページは、生成した音声を別タブの「マイク」に直接変換できません。WindowsにVB-CABLEなどを導入したうえで、次のように設定します。
+
+1. 本アプリの「相手へ送る翻訳音声の出力先」で仮想ケーブルの入力側を選択
+2. Zoom/Meetのマイク設定で仮想ケーブルの出力側を選択
+3. 自分はヘッドホンを使用
 
 ## コマンド
 
 ```powershell
-npm.cmd run dev      # 画面とサーバーを開発モードで起動
-npm.cmd run check    # TypeScript型検査
-npm.cmd test         # 単体テスト
-npm.cmd run build    # 本番用画面をdistへ出力
-npm.cmd start        # APIサーバーを起動
+npm.cmd run dev
+npm.cmd run check
+npm.cmd test
+npm.cmd run build
 ```
 
-## 構成
-
-```text
-src/                 React画面、マイク録音、音声再生
-server/              Fastify、WebSocket、OpenAI接続、料金計算
-shared/protocol.ts   クライアント・サーバー共通の通信型
-```
-
-## 注意事項
-
-- マイク音声は24 kHz、モノラル、PCM16として送信します。
-- 推定料金はAPI応答の使用量と送信音声時間から算出した参考値です。正式な請求額はOpenAI Platformで確認してください。
-- モデルやRealtime APIのイベント仕様が更新された場合は、`.env`のモデル名または`server/openai-realtime.ts`のアダプターだけを更新できる設計です。
+推定料金は送信した発話時間とテキストトークンから算出する参考値です。正式な請求額はOpenAI Platformで確認してください。

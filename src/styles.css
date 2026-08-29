@@ -77,3 +77,9 @@ h2 { margin: 0; font-size: 16px; }
 .metrics-card code { display: block; padding: 12px; color: #6bd9b5; white-space: pre-line; border: 1px solid #203832; border-radius: 10px; background: #091210; font-size: 11px; line-height: 1.7; }
 @media (max-width: 760px) { main { width: min(100% - 24px, 1180px); padding-top: 25px; } .hero { align-items: flex-start; } .brand-mark { width: 50px; height: 50px; border-radius: 15px; } .subtitle { display: none; } .status { padding: 8px 10px; } .mode-picker, .workspace { grid-template-columns: 1fr; } .language-row { grid-template-columns: 1fr auto 1fr; } .metrics-card { display: none; } }
 @media (max-width: 480px) { .control-card { padding: 16px; } .mode-picker button { padding: 14px; } .language-row { grid-template-columns: 1fr; } .swap { justify-self: center; transform: rotate(90deg); } }
+.two-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lane { min-width: 0; }
+.output-picker { display: grid; gap: 8px; margin: 20px 0; color: #8fb5aa; font-size: 12px; }
+.output-picker small, .mock-note { line-height: 1.6; }
+.dual-meters { display: flex; justify-content: space-between; margin-top: 12px; color: #83b7aa; font-size: 13px; }
+@media (max-width: 800px) { .two-lanes { grid-template-columns: 1fr; } }
