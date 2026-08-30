@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { calculateMetrics } from "./metrics.js";
 
 describe("calculateMetrics", () => {
-  it("pipelineの音声1分を$0.017で計算する", () => {
+  it("pipelineの音声1分を概算$0.02で計算する", () => {
     const metrics = calculateMetrics("pipeline", 24_000 * 2 * 60, 320);
     expect(metrics.audioSeconds).toBe(60);
-    expect(metrics.estimatedUsd).toBeCloseTo(0.017, 6);
+    expect(metrics.estimatedUsd).toBeCloseTo(0.02, 6);
     expect(metrics.firstResultMs).toBe(320);
   });
 

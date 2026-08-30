@@ -1,23 +1,35 @@
+export type RecorderSource = "microphone" | "meeting-tab";
+
 export class PcmRecorder {
   private context: AudioContext | null = null;
   private stream: MediaStream | null = null;
   private source: MediaStreamAudioSourceNode | null = null;
   private processor: ScriptProcessorNode | null = null;
+  private sink: GainNode | null = null;
 
   async start(
+    sourceType: RecorderSource,
     onChunk: (base64: string, speechActive: boolean) => void,
     onLevel?: (level: number) => void,
     onSpeechEnd?: () => void,
   ): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-    });
+    this.stream = sourceType === "microphone"
+      ? await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    if (!this.stream.getAudioTracks().length) {
+      this.stream.getTracks().forEach((track) => track.stop());
+      throw new Error("選択した画面に音声が含まれていません。「タブの音声を共有」を有効にしてください。");
+    }
+
     this.context = new AudioContext({ sampleRate: 24_000 });
     await this.context.resume();
     this.source = this.context.createMediaStreamSource(this.stream);
     this.processor = this.context.createScriptProcessor(4096, 1, 1);
+    this.sink = this.context.createGain();
+    this.sink.gain.value = 0;
     let speaking = false;
     let silenceMs = 0;
+    const preRoll: string[] = [];
     this.processor.onaudioprocess = (event) => {
       const samples = event.inputBuffer.getChannelData(0);
       const pcm = new Int16Array(samples.length);
@@ -29,66 +41,76 @@ export class PcmRecorder {
       }
       const rms = Math.sqrt(sumSquares / samples.length);
       onLevel?.(Math.min(1, rms * 8));
-      if (rms >= 0.018) {
-        speaking = true;
-        silenceMs = 0;
-      } else if (speaking) {
+      const speechStarted = !speaking && rms >= 0.018;
+      if (rms >= 0.018) { speaking = true; silenceMs = 0; }
+      else if (speaking) {
         silenceMs += (samples.length / this.context!.sampleRate) * 1_000;
-        if (silenceMs >= 800) {
-          speaking = false;
-          silenceMs = 0;
-          onSpeechEnd?.();
-        }
+        if (silenceMs >= 1_300) { speaking = false; silenceMs = 0; onSpeechEnd?.(); }
       }
       const bytes = new Uint8Array(pcm.buffer);
       let binary = "";
-      for (let i = 0; i < bytes.length; i += 0x8000) {
-        binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const encoded = btoa(binary);
+      if (speechStarted) {
+        for (const buffered of preRoll) onChunk(buffered, true);
+        preRoll.length = 0;
       }
-      onChunk(btoa(binary), speaking);
+      onChunk(encoded, speaking);
+      if (!speaking) {
+        preRoll.push(encoded);
+        if (preRoll.length > 3) preRoll.shift();
+      }
     };
     this.source.connect(this.processor);
-    this.processor.connect(this.context.destination);
+    this.processor.connect(this.sink);
+    this.sink.connect(this.context.destination);
   }
 
   async stop(): Promise<void> {
-    this.processor?.disconnect();
-    this.source?.disconnect();
+    this.processor?.disconnect(); this.source?.disconnect(); this.sink?.disconnect();
     this.stream?.getTracks().forEach((track) => track.stop());
     await this.context?.close();
-    this.processor = null;
-    this.source = null;
-    this.stream = null;
-    this.context = null;
+    this.processor = null; this.source = null; this.sink = null; this.stream = null; this.context = null;
   }
 }
 
-export class PcmPlayer {
-  private context: AudioContext | null = null;
-  private playAt = 0;
+export class AudioFilePlayer {
+  private queue: Array<{ audio: string; mimeType: string }> = [];
+  private playing = false;
+  private sinkId = "";
+  private current: HTMLAudioElement | null = null;
 
-  async append(base64: string): Promise<void> {
-    this.context ??= new AudioContext({ sampleRate: 24_000 });
-    await this.context.resume();
-    const binary = atob(base64);
-    const pcm = new Int16Array(binary.length / 2);
-    for (let i = 0; i < pcm.length; i += 1) {
-      pcm[i] = binary.charCodeAt(i * 2) | (binary.charCodeAt(i * 2 + 1) << 8);
-    }
-    const buffer = this.context.createBuffer(1, pcm.length, 24_000);
-    const channel = buffer.getChannelData(0);
-    for (let i = 0; i < pcm.length; i += 1) channel[i] = pcm[i] / 0x8000;
-    const source = this.context.createBufferSource();
-    source.buffer = buffer;
-    source.connect(this.context.destination);
-    this.playAt = Math.max(this.playAt, this.context.currentTime);
-    source.start(this.playAt);
-    this.playAt += buffer.duration;
+  setSinkId(sinkId: string): void { this.sinkId = sinkId; }
+
+  append(audio: string, mimeType: string): void {
+    this.queue.push({ audio, mimeType });
+    if (!this.playing) void this.playNext();
   }
 
-  async close(): Promise<void> {
-    await this.context?.close();
-    this.context = null;
-    this.playAt = 0;
+  close(): void {
+    this.queue = [];
+    this.current?.pause();
+    this.current = null;
+    this.playing = false;
+  }
+
+  private async playNext(): Promise<void> {
+    const item = this.queue.shift();
+    if (!item) { this.playing = false; return; }
+    this.playing = true;
+    const binary = atob(item.audio);
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: item.mimeType }));
+    const element = new Audio(url);
+    this.current = element;
+    try {
+      if (this.sinkId && "setSinkId" in element) await element.setSinkId(this.sinkId);
+      await element.play();
+      await new Promise<void>((resolve) => { element.onended = () => resolve(); element.onerror = () => resolve(); });
+    } finally {
+      URL.revokeObjectURL(url);
+      if (this.current === element) this.current = null;
+      void this.playNext();
+    }
   }
 }
