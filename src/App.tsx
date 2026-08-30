@@ -22,6 +22,8 @@ export default function App() {
   const [error, setError] = useState("");
   const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
   const [outgoingSinkId, setOutgoingSinkId] = useState("");
+  const [accessToken, setAccessToken] = useState("");
+  const [authRequired, setAuthRequired] = useState(false);
   const socketRef = useRef<WebSocket | null>(null);
   const recorders = useRef<Record<AudioChannel, PcmRecorder>>({ remote: new PcmRecorder(), local: new PcmRecorder() });
   const players = useRef<Record<AudioChannel, AudioFilePlayer>>({ remote: new AudioFilePlayer(), local: new AudioFilePlayer() });
@@ -38,6 +40,13 @@ export default function App() {
   }, []);
 
   useEffect(() => { players.current.local.setSinkId(outgoingSinkId); }, [outgoingSinkId]);
+
+  useEffect(() => {
+    void fetch("/api/health")
+      .then((response) => response.json() as Promise<{ authRequired?: boolean }>)
+      .then((health) => setAuthRequired(Boolean(health.authRequired)))
+      .catch(() => undefined);
+  }, []);
 
   const sendAudio = (channel: AudioChannel, audio: string, speechActive: boolean) => {
     if (!speechActive) return;
@@ -83,6 +92,10 @@ export default function App() {
   };
 
   const start = async () => {
+    if (authRequired && !accessToken) {
+      setError("アクセスキーを入力してください。");
+      return;
+    }
     setError(""); setMetrics(emptyMetrics); setStatus("connecting");
     readyRef.current = false; queues.current = { remote: [], local: [] };
     partialRef.current = emptyPartial(); setPartial(emptyPartial());
@@ -102,7 +115,7 @@ export default function App() {
     const protocol = location.protocol === "https:" ? "wss" : "ws";
     const socket = new WebSocket(`${protocol}://${location.host}/ws`);
     socketRef.current = socket;
-    socket.onopen = () => socket.send(JSON.stringify({ type: "session.start", options: { localLanguage, remoteLanguage } }));
+    socket.onopen = () => socket.send(JSON.stringify({ type: "session.start", options: { localLanguage, remoteLanguage }, accessToken }));
     socket.onmessage = (event) => handleMessage(JSON.parse(event.data) as ServerMessage);
     socket.onerror = () => { setError("翻訳サーバーへ接続できません。"); setStatus("error"); };
     socket.onclose = () => { readyRef.current = false; setStatus((value) => value === "error" ? value : "idle"); };
@@ -133,8 +146,12 @@ export default function App() {
   };
 
   return <main>
-    <header className="hero"><div className="brand-mark">訳</div><div><p className="eyebrow">BIDIRECTIONAL LIVE INTERPRETER</p><h1>翻訳こんにゃく</h1><p className="subtitle">会議タブとマイクを双方向に翻訳します</p></div><div className={`status status-${status}`}><span />{status === "listening" ? "翻訳中" : status === "connecting" ? "接続中" : "待機中"}</div></header>
+    <header className="hero"><div className="brand-mark">訳</div><div><p className="eyebrow">BIDIRECTIONAL LIVE INTERPRETER</p><h1>リアルタイム会議通訳</h1><p className="subtitle">会議タブとマイクを双方向に翻訳します</p></div><div className={`status status-${status}`}><span />{status === "listening" ? "翻訳中" : status === "connecting" ? "接続中" : "待機中"}</div></header>
     <section className="control-card">
+      {authRequired && <label className="output-picker">アクセスキー
+        <input type="password" autoComplete="current-password" value={accessToken} disabled={busy} onChange={(event) => setAccessToken(event.target.value)} placeholder="管理者から共有されたキー" />
+        <small>OpenAI APIキーではありません。このサービス専用のアクセスキーです。</small>
+      </label>}
       <div className="language-row">
         <label>自分の言語<select disabled={busy} value={localLanguage} onChange={(e) => setLocalLanguage(e.target.value as LanguageCode)}>{Object.entries(languageNames).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
         <button className="swap" disabled={busy} onClick={() => { setLocalLanguage(remoteLanguage); setRemoteLanguage(localLanguage); }}>⇄</button>

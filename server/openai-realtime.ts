@@ -75,7 +75,7 @@ export class OpenAIRealtimeSession {
         format: { type: "audio/pcm", rate: 24_000 },
         transcription: {
           model: process.env.OPENAI_TRANSCRIBE_MODEL ?? "gpt-transcribe",
-          languages: [this.language], delay: "low",
+          languages: [this.language],
         },
         turn_detection: null,
       } },

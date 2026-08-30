@@ -80,6 +80,7 @@ h2 { margin: 0; font-size: 16px; }
 .two-lanes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lane { min-width: 0; }
 .output-picker { display: grid; gap: 8px; margin: 20px 0; color: #8fb5aa; font-size: 12px; }
+.output-picker input { width: 100%; box-sizing: border-box; padding: 13px 15px; color: #e6f2ef; border: 1px solid #293e39; border-radius: 12px; outline: none; background: #0b1412; }
 .output-picker small, .mock-note { line-height: 1.6; }
 .dual-meters { display: flex; justify-content: space-between; margin-top: 12px; color: #83b7aa; font-size: 13px; }
 @media (max-width: 800px) { .two-lanes { grid-template-columns: 1fr; } }

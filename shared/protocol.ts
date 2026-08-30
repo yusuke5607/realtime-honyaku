@@ -8,7 +8,7 @@ export interface SessionOptions {
 }
 
 export type ClientMessage =
-  | { type: "session.start"; options: SessionOptions }
+  | { type: "session.start"; options: SessionOptions; accessToken?: string }
   | { type: "audio.chunk"; channel: AudioChannel; audio: string }
   | { type: "audio.commit"; channel: AudioChannel }
   | { type: "session.stop" };
